@@ -177,3 +177,20 @@ func ListFollowing(state *State, cmd Command) error {
 
 	return nil
 }
+
+func Unfollow(state *State, cmd Command) error {
+	if len(cmd.Args) != 1 {
+		return fmt.Errorf("usage: %s <url>", cmd.Name)
+	}
+	url := cmd.Args[0]
+
+	feed, err := state.DB.GetFeedByUrl(context.Background(), url)
+	if err != nil {
+		return fmt.Errorf("couldn't get feed by url: %w", err)
+	}
+
+	return state.DB.DeleteFeedFollows(context.Background(), database.DeleteFeedFollowsParams{
+		UserID: state.User.ID,
+		FeedID: feed.ID,
+	})
+}
