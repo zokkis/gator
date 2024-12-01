@@ -30,17 +30,17 @@ func main() {
 	}
 
 	cmds := command.Commands{
-		RegisteredCommands: make(map[string]func(*command.State, command.Command) error),
+		RegisteredCommands: make(map[string][]func(*command.State, command.Command) error),
 	}
 	cmds.Register("login", command.Login)
 	cmds.Register("register", command.Register)
 	cmds.Register("users", command.ListUsers)
 	cmds.Register("reset", command.Reset)
 	cmds.Register("agg", command.FetchFeed)
-	cmds.Register("addfeed", command.AddFeed)
+	cmds.Register("addfeed", command.MiddlewareLoggedIn, command.AddFeed)
 	cmds.Register("feeds", command.ListFeeds)
-	cmds.Register("follow", command.FollowFeed)
-	cmds.Register("following", command.ListFollowing)
+	cmds.Register("follow", command.MiddlewareLoggedIn, command.FollowFeed)
+	cmds.Register("following", command.MiddlewareLoggedIn, command.ListFollowing)
 
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: cli <command> [args...]")

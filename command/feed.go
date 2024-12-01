@@ -77,17 +77,12 @@ func AddFeed(state *State, cmd Command) error {
 	name := cmd.Args[0]
 	url := cmd.Args[1]
 
-	user, err := state.DB.GetUser(context.Background(), state.Cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("couldn't get user: %w", err)
-	}
-
 	currentTime := time.Now()
 	feed, err := state.DB.CreateFeed(context.Background(), database.CreateFeedParams{
 		ID:        uuid.New(),
 		Name:      name,
 		Url:       url,
-		UserID:    user.ID,
+		UserID:    state.User.ID,
 		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
 	})
@@ -97,7 +92,7 @@ func AddFeed(state *State, cmd Command) error {
 
 	_, err = state.DB.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
 		ID:        uuid.New(),
-		UserID:    user.ID,
+		UserID:    state.User.ID,
 		FeedID:    feed.ID,
 		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
@@ -137,11 +132,6 @@ func FollowFeed(state *State, cmd Command) error {
 	}
 	url := cmd.Args[0]
 
-	user, err := state.DB.GetUser(context.Background(), state.Cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("couldn't get user: %w", err)
-	}
-
 	feed, err := state.DB.GetFeedByUrl(context.Background(), url)
 	if err != nil {
 		return fmt.Errorf("couldn't get feed with url(%s): %w", url, err)
@@ -150,7 +140,7 @@ func FollowFeed(state *State, cmd Command) error {
 	currentTime := time.Now()
 	_, err = state.DB.CreateFeedFollow(context.Background(), database.CreateFeedFollowParams{
 		ID:        uuid.New(),
-		UserID:    user.ID,
+		UserID:    state.User.ID,
 		FeedID:    feed.ID,
 		CreatedAt: currentTime,
 		UpdatedAt: currentTime,
@@ -162,19 +152,14 @@ func FollowFeed(state *State, cmd Command) error {
 	fmt.Println("-------- Feed ------->")
 	fmt.Printf("Name: %s\n", feed.Name)
 	fmt.Printf("Url: %s\n", feed.Url)
-	fmt.Printf("Creator: %s\n", user.Name)
+	fmt.Printf("Creator: %s\n", state.User.Name)
 	fmt.Println("<------- Feed --------")
 
 	return nil
 }
 
 func ListFollowing(state *State, cmd Command) error {
-	user, err := state.DB.GetUser(context.Background(), state.Cfg.CurrentUserName)
-	if err != nil {
-		return fmt.Errorf("couldn't get user: %w", err)
-	}
-
-	feeds, err := state.DB.GetFeedFollowsForUser(context.Background(), user.ID)
+	feeds, err := state.DB.GetFeedFollowsForUser(context.Background(), state.User.ID)
 	if err != nil {
 		return fmt.Errorf("couldn't get following feeds: %w", err)
 	}

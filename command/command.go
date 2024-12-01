@@ -14,24 +14,30 @@ type Command struct {
 }
 
 type Commands struct {
-	RegisteredCommands map[string]func(*State, Command) error
+	RegisteredCommands map[string][]func(*State, Command) error
 }
 
 type State struct {
-	DB  *database.Queries
-	Cfg *config.Config
+	DB   *database.Queries
+	Cfg  *config.Config
+	User *database.User
 }
 
-func (commands *Commands) Register(name string, function func(*State, Command) error) {
-	commands.RegisteredCommands[name] = function
+func (commands *Commands) Register(name string, funcs ...(func(*State, Command) error)) {
+	commands.RegisteredCommands[name] = funcs
 }
 
 func (commands *Commands) Run(state *State, cmd Command) error {
-	function, ok := commands.RegisteredCommands[cmd.Name]
+	funcs, ok := commands.RegisteredCommands[cmd.Name]
 	if !ok {
 		return errors.New("command not found")
 	}
-	return function(state, cmd)
+	for _, function := range funcs {
+		if err := function(state, cmd); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (commands *Commands) MustRun(state *State, cmd Command) {
