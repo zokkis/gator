@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"database/sql"
 	"encoding/xml"
 	"fmt"
 	"html"
@@ -28,8 +29,8 @@ type RSSItem struct {
 	PubDate     string `xml:"pubDate"`
 }
 
-func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", feedURL, nil)
+func fetchFeed(state *State, feed *database.Feed) (*RSSFeed, error) {
+	req, err := http.NewRequestWithContext(context.Background(), "GET", feed.Url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -56,18 +57,47 @@ func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
 		rss.Channel.Items[i] = item
 	}
 
-	return &rss, nil
+	currentTime := time.Now()
+	return &rss, state.DB.MarkFeedFetched(context.Background(), database.MarkFeedFetchedParams{
+		ID:            feed.ID,
+		LastFetchedAt: sql.NullTime{Time: currentTime, Valid: true},
+		UpdatedAt:     currentTime,
+	})
 }
 
 func FetchFeed(state *State, cmd Command) error {
-	rss, err := fetchFeed(context.Background(), "https://www.wagslane.dev/index.xml")
-	if err != nil {
-		return fmt.Errorf("couldn't get feed: %w", err)
+	if len(cmd.Args) < 1 || len(cmd.Args) > 2 {
+		return fmt.Errorf("usage: %v <time_between_reqs>", cmd.Name)
 	}
 
-	fmt.Println(rss)
+	timeBetweenRequests, err := time.ParseDuration(cmd.Args[0])
+	if err != nil {
+		return fmt.Errorf("invalid duration: %w", err)
+	}
 
-	return nil
+	fmt.Printf("Collecting feeds every %s...\n", timeBetweenRequests)
+
+	ticker := time.NewTicker(timeBetweenRequests)
+
+	for ; ; <-ticker.C {
+		feed, err := state.DB.GetNextFeedToFetch(context.Background())
+		if err != nil {
+			fmt.Println(fmt.Errorf("couldn't get next feed: %w", err))
+			continue
+		}
+
+		rss, err := fetchFeed(state, &feed)
+		if err != nil {
+			fmt.Println(fmt.Errorf("couldn't fetch rss for: %s - %w", feed.Url, err))
+			continue
+		}
+
+		fmt.Printf("-------- Feed: '%s' ------->\n", feed.Name)
+		for i, item := range rss.Channel.Items {
+			fmt.Printf("Post %03d: %s\n", i, item.Title)
+		}
+		fmt.Printf("<------- Feed: '%s' --------\n", feed.Name)
+	}
 }
 
 func AddFeed(state *State, cmd Command) error {
