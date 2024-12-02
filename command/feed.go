@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -93,8 +95,36 @@ func FetchFeed(state *State, cmd Command) error {
 		}
 
 		fmt.Printf("-------- Feed: '%s' ------->\n", feed.Name)
-		for i, item := range rss.Channel.Items {
-			fmt.Printf("Post %03d: %s\n", i, item.Title)
+		for _, item := range rss.Channel.Items {
+			publishedAt := sql.NullTime{}
+			if t, err := time.Parse(time.RFC1123Z, item.PubDate); err == nil {
+				publishedAt = sql.NullTime{
+					Time:  t,
+					Valid: true,
+				}
+			}
+
+			currentTime := time.Now()
+			_, err = state.DB.CreatePost(context.Background(), database.CreatePostParams{
+				ID:        uuid.New(),
+				CreatedAt: currentTime,
+				UpdatedAt: currentTime,
+				FeedID:    feed.ID,
+				Title:     item.Title,
+				Description: sql.NullString{
+					String: item.Description,
+					Valid:  true,
+				},
+				Url:         item.Link,
+				PublishedAt: publishedAt,
+			})
+			if err != nil {
+				if strings.Contains(err.Error(), "duplicate key value violates unique constraint") {
+					continue
+				}
+				fmt.Printf("Couldn't create post: %v", err)
+				continue
+			}
 		}
 		fmt.Printf("<------- Feed: '%s' --------\n", feed.Name)
 	}
@@ -223,4 +253,34 @@ func Unfollow(state *State, cmd Command) error {
 		UserID: state.User.ID,
 		FeedID: feed.ID,
 	})
+}
+
+func Browse(state *State, cmd Command) error {
+	limit := 2
+	if len(cmd.Args) == 1 {
+		if specifiedLimit, err := strconv.Atoi(cmd.Args[0]); err == nil {
+			limit = specifiedLimit
+		} else {
+			return fmt.Errorf("invalid limit: %w", err)
+		}
+	}
+
+	posts, err := state.DB.GetPostsForUser(context.Background(), database.GetPostsForUserParams{
+		UserID: state.User.ID,
+		Limit:  int32(limit),
+	})
+	if err != nil {
+		return fmt.Errorf("couldn't get posts for user: %w", err)
+	}
+
+	fmt.Printf("Found %d posts for user %s:\n", len(posts), state.User.Name)
+	for _, post := range posts {
+		fmt.Printf("%s from %s\n", post.PublishedAt.Time.Format("Mon 2. Jan"), post.FeedName)
+		fmt.Printf("--- %s ---\n", post.Title)
+		fmt.Printf("    %v\n", post.Description.String)
+		fmt.Printf("Link: %s\n", post.Url)
+		fmt.Println("=====================================")
+	}
+
+	return nil
 }
